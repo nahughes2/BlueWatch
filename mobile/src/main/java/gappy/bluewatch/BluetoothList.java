@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -33,8 +37,111 @@ public class BluetoothList extends Activity {
     private BluetoothAdapter mBluetoothAdapter;
     private Set<BluetoothDevice> mDeviceSet;
     private ListView mBluetoothList;
+    private BluetoothGatt mBluetoothGatt;
+    private int mConnectionState = STATE_DISCONNECTED;
+    private String mBluetoothDeviceAddress;
+
+    private static final int STATE_DISCONNECTED = 0;
+    private static final int STATE_CONNECTING = 1;
+    private static final int STATE_CONNECTED = 2;
 
     private static final String TAG = "BluetoothList";
+
+    private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            String intentAction;
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                Log.i(TAG, "Connected to GATT server.");
+                // Attempts to discover services after successful connection.
+                Log.i(TAG, "Attempting to start service discovery:" +
+                        mBluetoothGatt.discoverServices());
+
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                mConnectionState = STATE_DISCONNECTED;
+                Log.i(TAG, "Disconnected from GATT server.");
+            }
+        }
+
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+            } else {
+                Log.w(TAG, "onServicesDiscovered received: " + status);
+            }
+        }
+
+        @Override
+        public void onCharacteristicRead(BluetoothGatt gatt,
+                                         BluetoothGattCharacteristic characteristic,
+                                         int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+            }
+        }
+
+        @Override
+        public void onCharacteristicChanged(BluetoothGatt gatt,
+                                            BluetoothGattCharacteristic characteristic) {
+        }
+    };
+
+    public boolean connect(final String address) {
+        if (mBluetoothAdapter == null || address == null) {
+            Log.w(TAG, "BluetoothAdapter not initialized or unspecified address.");
+            return false;
+        }
+
+        // Previously connected device.  Try to reconnect.
+        if (mBluetoothDeviceAddress != null && address.equals(mBluetoothDeviceAddress)
+                && mBluetoothGatt != null) {
+            Log.d(TAG, "Trying to use an existing mBluetoothGatt for connection.");
+            if (mBluetoothGatt.connect()) {
+                mConnectionState = STATE_CONNECTING;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
+        if (device == null) {
+            Log.w(TAG, "Device not found.  Unable to connect.");
+            return false;
+        }
+        // We want to directly connect to the device, so we are setting the autoConnect
+        // parameter to false.
+        mBluetoothGatt = device.connectGatt(this, false, mGattCallback);
+        Log.d(TAG, "Trying to create a new connection.");
+        mBluetoothDeviceAddress = address;
+        mConnectionState = STATE_CONNECTING;
+        return true;
+    }
+
+    /**
+     * Disconnects an existing connection or cancel a pending connection. The disconnection result
+     * is reported asynchronously through the
+     * {@code BluetoothGattCallback#onConnectionStateChange(android.bluetooth.BluetoothGatt, int, int)}
+     * callback.
+     */
+    public void disconnect() {
+        if (mBluetoothAdapter == null || mBluetoothGatt == null) {
+            Log.w(TAG, "BluetoothAdapter not initialized");
+            return;
+        }
+        mBluetoothGatt.disconnect();
+    }
+
+    /**
+     * After using a given BLE device, the app must call this method to ensure resources are
+     * released properly.
+     */
+    public void close() {
+        if (mBluetoothGatt == null) {
+            return;
+        }
+        mBluetoothGatt.close();
+        mBluetoothGatt = null;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,9 +154,9 @@ public class BluetoothList extends Activity {
         mDeviceSet = mBluetoothAdapter.getBondedDevices();
 
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-        registerReceiver(mReceiver, filter); // Don't forget to unregister during onDestroy
+  //      registerReceiver(mReceiver, filter); // Don't forget to unregister during onDestroy
 
-        if(mBluetoothAdapter.isEnabled() != true) {
+        if (mBluetoothAdapter.isEnabled() != true) {
             Intent turnOn = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(turnOn, 0);
         }
@@ -58,7 +165,7 @@ public class BluetoothList extends Activity {
         if (mDeviceSet.size() < 1) {
             //display empty page
         } else {
-            ArrayList<BluetoothDevice> deviceList = new ArrayList<BluetoothDevice>();
+            final ArrayList<BluetoothDevice> deviceList = new ArrayList<BluetoothDevice>();
             deviceList.addAll(mDeviceSet);
 
             mBluetoothList.setAdapter(new BluetoothArrayAdapter(this.getBaseContext(), deviceList));
@@ -68,7 +175,8 @@ public class BluetoothList extends Activity {
                 public void onItemClick(AdapterView<?> parent, final View view,
                                         int position, long id) {
 
-                    //connect to bluetooth device
+                    //TODO connect to bluetooth device
+                    connect(deviceList.get(position).getAddress());
                 }
             });
         }
@@ -77,7 +185,7 @@ public class BluetoothList extends Activity {
     public void refreshBluetoothList() {
         mDeviceSet = mBluetoothAdapter.getBondedDevices();
         ListAdapter listAdapter = mBluetoothList.getAdapter();
-        ((BaseAdapter)listAdapter).notifyDataSetChanged();
+        ((BaseAdapter) listAdapter).notifyDataSetChanged();
     }
 
     @Override
@@ -108,7 +216,7 @@ public class BluetoothList extends Activity {
         public BluetoothArrayAdapter(Context context, ArrayList<BluetoothDevice> deviceList) {
             super(context, R.layout.activity_bluetooth_list, deviceList);
             mDeviceList = deviceList;
-            for(BluetoothDevice deviceItem : mDeviceList) {
+            for (BluetoothDevice deviceItem : mDeviceList) {
                 deviceNames.add(deviceItem.getName());
             }
         }
@@ -121,9 +229,9 @@ public class BluetoothList extends Activity {
             TextView textView = (TextView) rowView.findViewById(R.id.deviceName);
             textView.setText(deviceNames.get(position));
             ImageView imageView = (ImageView) rowView.findViewById(R.id.imageView);
-            if(mDeviceList.get(position).getBondState() == BluetoothDevice.ACTION_ACL_CONNECTED) {
-                textView.setTextColor(getResources().getColor(R.color.holo_blue_bright);
-            }
+//            if (mDeviceList.get(position)) {
+//                textView.setTextColor(getResources().getColor(R.color.holo_blue_bright);
+//            }
             BluetoothClass itemClass = mDeviceList.get(position).getBluetoothClass();
             if (itemClass != null) {
                 switch (itemClass.getMajorDeviceClass()) {
@@ -153,20 +261,5 @@ public class BluetoothList extends Activity {
             return rowView;
         }
     }
-
-    // Create a BroadcastReceiver for ACTION_FOUND
-    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            // When discovery finds a device
-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-                // Get the BluetoothDevice object from the Intent
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                // Add the name and address to an array adapter to show in a ListView
-                mArrayAdapter.add(device.getName() + "\n" + device.getAddress());
-            }
-        }
-    }
-
 
 }
