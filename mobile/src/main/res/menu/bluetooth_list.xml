@@ -1,8 +1,19 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     tools:context=".BluetoothList" >
-    <item android:id="@+id/action_settings"
-        android:title="@string/action_settings"
-        android:orderInCategory="100"
-        android:showAsAction="never" />
+    <item android:id="@+id/onOffButton"
+        android:title="@string/enable"
+        android:icon="@drawable/ic_action_bluetooth"
+        android:orderInCategory="98"
+        android:showAsAction="always" />
+    <item android:id="@+id/addDevice"
+          android:icon="@drawable/ic_action_new"
+          android:title="@string/add_device"
+          android:orderInCategory="99"
+          android:showAsAction="always" />
+    <item android:id="@+id/refresh"
+          android:title="@string/refresh"
+          android:icon="@drawable/ic_action_refresh"
+          android:orderInCategory="100"
+          android:showAsAction="always" />
 </menu>
